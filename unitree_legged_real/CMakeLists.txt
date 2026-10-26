@@ -1,48 +1,75 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.12)
 project(unitree_legged_real)
 
-add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+add_compile_options(-O3 -fPIC)
 
-find_package(catkin REQUIRED COMPONENTS
-    roscpp
-    geometry_msgs
-    unitree_legged_msgs
-)
+set(ROS_VERSION_ENV "$ENV{ROS_VERSION}")
+if(ROS_VERSION_ENV STREQUAL "1")
+  if(DEFINED ENV{AMENT_PREFIX_PATH} AND NOT "$ENV{AMENT_PREFIX_PATH}" STREQUAL "")
+    message(FATAL_ERROR "Conflicting ROS environment: ROS_VERSION=1 but AMENT_PREFIX_PATH is set.")
+  endif()
+  add_compile_definitions(USE_ROS1)
+elseif(ROS_VERSION_ENV STREQUAL "2")
+  if(DEFINED ENV{CATKIN_ENV_HOOK_WORKSPACE} AND NOT "$ENV{CATKIN_ENV_HOOK_WORKSPACE}" STREQUAL "")
+    message(FATAL_ERROR "Conflicting ROS environment: ROS_VERSION=2 but CATKIN_ENV_HOOK_WORKSPACE is set.")
+  endif()
+  add_compile_definitions(USE_ROS2)
+else()
+  message(FATAL_ERROR "Source a ROS1 or ROS2 environment before configuring (ROS_VERSION must be 1 or 2).")
+endif()
 
-catkin_package()
+if(ROS_VERSION_ENV STREQUAL "1")
+  find_package(catkin REQUIRED COMPONENTS roscpp unitree_legged_msgs)
+  catkin_package(CATKIN_DEPENDS roscpp unitree_legged_msgs)
+else()
+  find_package(ament_cmake REQUIRED)
+  find_package(rclcpp REQUIRED)
+  find_package(unitree_legged_msgs REQUIRED)
+endif()
+find_package(Threads REQUIRED)
+find_package(Boost REQUIRED)
 
-message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
-if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "x86_64.*")
+# The SDK uses LCM; link it explicitly after the SDK library.
+find_library(LCM_LIBRARY NAMES lcm)
+if(NOT LCM_LIBRARY)
+  message(FATAL_ERROR "LCM library missing. Install liblcm-dev before building.")
+endif()
+
+# Works with both catkin's shared source root and colcon's per-package root.
+set(UNITREE_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../unitree_legged_sdk"
+    CACHE PATH "Path to unitree_legged_sdk v3.8.4")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
   set(ARCH amd64)
 else()
   set(ARCH arm64)
 endif()
+find_library(UNITREE_SDK_LIBRARY NAMES unitree_legged_sdk
+  PATHS "${UNITREE_SDK_DIR}/lib/" NO_DEFAULT_PATH)
+if(NOT UNITREE_SDK_LIBRARY)
+  message(FATAL_ERROR "Unitree SDK library missing. Add SDK v3.8.4 at ${UNITREE_SDK_DIR} or set UNITREE_SDK_DIR.")
+endif()
 
-link_directories(${CMAKE_SOURCE_DIR}/unitree_ros_to_real/unitree_legged_sdk/lib/cpp/${ARCH})
+foreach(node example_walk example_position ros_udp)
+  add_executable(${node} src/exe/${node}.cpp)
+  target_include_directories(${node} PRIVATE include "${UNITREE_SDK_DIR}/include" ${Boost_INCLUDE_DIRS})
+  target_link_libraries(${node} ${UNITREE_SDK_LIBRARY} ${LCM_LIBRARY} Threads::Threads)
+  if(ROS_VERSION_ENV STREQUAL "1")
+    target_include_directories(${node} PRIVATE ${catkin_INCLUDE_DIRS})
+    target_link_libraries(${node} ${catkin_LIBRARIES})
+    add_dependencies(${node} ${catkin_EXPORTED_TARGETS})
+    install(TARGETS ${node} RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+  else()
+    ament_target_dependencies(${node} rclcpp unitree_legged_msgs)
+    install(TARGETS ${node} DESTINATION lib/${PROJECT_NAME})
+  endif()
+endforeach()
 
-set(EXTRA_LIBS -pthread libunitree_legged_sdk.so)
-
-set(CMAKE_CXX_FLAGS "-O3 -fPIC")
-
-include_directories(
-    include
-    ${catkin_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}/unitree_ros_to_real/unitree_legged_sdk/include
-)
-
-
-
-add_executable(example_walk src/exe/example_walk.cpp)
-target_link_libraries(example_walk ${EXTRA_LIBS} ${catkin_LIBRARIES})
-add_dependencies(example_walk ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-add_executable(example_position src/exe/example_position.cpp)
-target_link_libraries(example_position ${EXTRA_LIBS} ${catkin_LIBRARIES})
-add_dependencies(example_position ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-add_executable(ros_udp src/exe/ros_udp.cpp)
-target_link_libraries(ros_udp ${EXTRA_LIBS} ${catkin_LIBRARIES})
-add_dependencies(ros_udp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-
-
+if(ROS_VERSION_ENV STREQUAL "1")
+  install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+else()
+  install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+  ament_package()
+endif()

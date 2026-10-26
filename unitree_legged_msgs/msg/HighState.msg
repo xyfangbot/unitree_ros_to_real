@@ -1,21 +1,16 @@
-uint8 levelFlag
-uint16 commVersion
-uint16 robotID
-uint32 SN
-uint8 bandWidth
+uint8 level_flag
+uint16 comm_version
+uint16 robot_id
+uint32 sn
+uint8 band_width
 uint8 mode
 IMU imu
-float32[3] position 
-float32[3] velocity 
-float32 yawSpeed
-Cartesian[4] footPosition2Body 
-Cartesian[4] footSpeed2Body	
-int16[4] footForce
-uint8[40] wirelessRemote
+float32[3] position
+float32[3] velocity
+float32 yaw_speed
+Cartesian[4] foot_position2_body
+Cartesian[4] foot_speed2_body
+int16[4] foot_force
+uint8[40] wireless_remote
 uint32 reserve
 uint32 crc
-
-
-
-
-

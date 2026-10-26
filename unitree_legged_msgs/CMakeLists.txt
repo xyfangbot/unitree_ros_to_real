@@ -1,48 +1,36 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.12)
 project(unitree_legged_msgs)
 
-find_package(catkin REQUIRED COMPONENTS
-  message_generation
-  std_msgs
-  geometry_msgs
-  sensor_msgs
+set(ROS_VERSION_ENV "$ENV{ROS_VERSION}")
+if(ROS_VERSION_ENV STREQUAL "1")
+  if(DEFINED ENV{AMENT_PREFIX_PATH} AND NOT "$ENV{AMENT_PREFIX_PATH}" STREQUAL "")
+    message(FATAL_ERROR "Conflicting ROS environment: ROS_VERSION=1 but AMENT_PREFIX_PATH is set.")
+  endif()
+  add_compile_definitions(USE_ROS1)
+elseif(ROS_VERSION_ENV STREQUAL "2")
+  if(DEFINED ENV{CATKIN_ENV_HOOK_WORKSPACE} AND NOT "$ENV{CATKIN_ENV_HOOK_WORKSPACE}" STREQUAL "")
+    message(FATAL_ERROR "Conflicting ROS environment: ROS_VERSION=2 but CATKIN_ENV_HOOK_WORKSPACE is set.")
+  endif()
+  add_compile_definitions(USE_ROS2)
+else()
+  message(FATAL_ERROR "Source a ROS1 or ROS2 environment before configuring (ROS_VERSION must be 1 or 2).")
+endif()
+
+set(message_files
+  MotorCmd.msg MotorState.msg Cartesian.msg IMU.msg LED.msg
+  LowCmd.msg LowState.msg HighCmd.msg HighState.msg
 )
 
-add_message_files(
-  FILES
-  MotorCmd.msg
-  MotorState.msg
-  Cartesian.msg
-  IMU.msg
-  LED.msg
-  LowCmd.msg
-  LowState.msg
-  HighCmd.msg
-  HighState.msg
-)
-
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-  geometry_msgs
-  sensor_msgs
-)
-
-catkin_package(
-  CATKIN_DEPENDS
-  message_runtime
-  std_msgs
-  geometry_msgs
-  sensor_msgs 
-)
-
-#############
-## Install ##
-#############
-
-# Mark topic names header files for installation
-install(
-  DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-  FILES_MATCHING PATTERN "*.h"
-)
+if(ROS_VERSION_ENV STREQUAL "1")
+  find_package(catkin REQUIRED COMPONENTS message_generation)
+  add_message_files(FILES ${message_files})
+  generate_messages()
+  catkin_package(CATKIN_DEPENDS message_runtime)
+else()
+  find_package(ament_cmake REQUIRED)
+  find_package(rosidl_default_generators REQUIRED)
+  list(TRANSFORM message_files PREPEND "msg/")
+  rosidl_generate_interfaces(${PROJECT_NAME} ${message_files})
+  ament_export_dependencies(rosidl_default_runtime)
+  ament_package()
+endif()

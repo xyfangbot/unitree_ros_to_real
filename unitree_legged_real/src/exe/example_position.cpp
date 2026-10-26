@@ -1,17 +1,30 @@
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+#ifdef USE_ROS1
 #include <ros/ros.h>
-#include <unitree_legged_msgs/LowCmd.h>
-#include <unitree_legged_msgs/LowState.h>
+#else
+#include <rclcpp/rclcpp.hpp>
+#endif
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
 #include "convert.h"
 
 using namespace UNITREE_LEGGED_SDK;
 
-unitree_legged_msgs::LowState low_state_ros;
+unitree_msgs::LowState low_state_ros;
 
-void lowStateCallback(const unitree_legged_msgs::LowState::ConstPtr &state)
+#ifdef USE_ROS1
+void lowStateCallback(const unitree_msgs::LowState::ConstPtr &state)
+#else
+void lowStateCallback(const unitree_msgs::LowState::ConstSharedPtr &state)
+#endif
 {
     static long count = 0;
+#ifdef USE_ROS1
     ROS_INFO("lowStateCallback %ld", count++);
+#else
+    RCLCPP_INFO(rclcpp::get_logger("unitree_legged_real"), "lowStateCallback %ld", count++);
+#endif
 
     low_state_ros = *state;
 }
@@ -28,15 +41,27 @@ double jointLinearInterpolation(double initPos, double targetPos, double rate)
 
 int main(int argc, char **argv)
 {
+#ifdef USE_ROS1
     ros::init(argc, argv, "example_postition_without_lcm");
+#else
+    rclcpp::init(argc, argv);
+#endif
 
     std::cout << "Communication level is set to LOW-level." << std::endl
               << "WARNING: Make sure the robot is hung up." << std::endl
               << "Press Enter to continue..." << std::endl;
     std::cin.ignore();
 
+#ifdef USE_ROS1
     ros::NodeHandle nh;
+#else
+    auto nh = rclcpp::Node::make_shared("example_position");
+#endif
+#ifdef USE_ROS1
     ros::Rate loop_rate(500);
+#else
+    rclcpp::WallRate loop_rate(500);
+#endif
 
     float qInit[3] = {0};
     float qDes[3] = {0};
@@ -49,35 +74,44 @@ int main(int argc, char **argv)
     int motiontime = 0;
     float dt = 0.002;
 
-    unitree_legged_msgs::LowCmd low_cmd_ros;
+    unitree_msgs::LowCmd low_cmd_ros;
 
     // bool initiated_flag = false; // initiate need time
     // int count = 0;
 
-    ros::Publisher pub = nh.advertise<unitree_legged_msgs::LowCmd>("low_cmd", 1);
+#ifdef USE_ROS1
+    ros::Publisher pub = nh.advertise<unitree_msgs::LowCmd>("low_cmd", 1);
     ros::Subscriber sub = nh.subscribe("low_state", 1, lowStateCallback);
+#else
+    auto pub = nh->create_publisher<unitree_msgs::LowCmd>("low_cmd", 1);
+    auto sub = nh->create_subscription<unitree_msgs::LowState>("low_state", 1, lowStateCallback);
+#endif
 
-    low_cmd_ros.levelFlag = LOWLEVEL;
+    low_cmd_ros.level_flag = LOWLEVEL;
 
     for (std::size_t i = 0; i < 20; ++i)
     {
-        low_cmd_ros.motorCmd[i].mode = 0x0A;  // motor switch to servo (PMSM) mode
-        low_cmd_ros.motorCmd[i].q = PosStopF; // 禁止位置环
-        low_cmd_ros.motorCmd[i].Kp = 0;
-        low_cmd_ros.motorCmd[i].dq = VelStopF; // 禁止速度环
-        low_cmd_ros.motorCmd[i].Kd = 0;
-        low_cmd_ros.motorCmd[i].tau = 0;
+        low_cmd_ros.motor_cmd[i].mode = 0x0A;  // motor switch to servo (PMSM) mode
+        low_cmd_ros.motor_cmd[i].q = PosStopF; // 禁止位置环
+        low_cmd_ros.motor_cmd[i].kp = 0;
+        low_cmd_ros.motor_cmd[i].dq = VelStopF; // 禁止速度环
+        low_cmd_ros.motor_cmd[i].kd = 0;
+        low_cmd_ros.motor_cmd[i].tau = 0;
     }
 
+#ifdef USE_ROS1
     while (ros::ok())
+#else
+    while (rclcpp::ok())
+#endif
     {
 
-        printf("FR_joint_pos: %f %f %f\n", low_state_ros.motorState[FR_0].q, low_state_ros.motorState[FR_1].q, low_state_ros.motorState[FR_2].q);
+        printf("FR_joint_pos: %f %f %f\n", low_state_ros.motor_state[FR_0].q, low_state_ros.motor_state[FR_1].q, low_state_ros.motor_state[FR_2].q);
 
         
         motiontime += 2;
 
-        low_cmd_ros.motorCmd[FR_0].tau = -1.6f;
+        low_cmd_ros.motor_cmd[FR_0].tau = -1.6f;
    
         if (motiontime >= 0)
         {
@@ -85,9 +119,9 @@ int main(int argc, char **argv)
         // if( motiontime >= 100 && motiontime < 500){
             if (motiontime >= 0 && motiontime < 10)
             {
-                qInit[0] = low_state_ros.motorState[FR_0].q;
-                qInit[1] = low_state_ros.motorState[FR_1].q;
-                qInit[2] = low_state_ros.motorState[FR_2].q;
+                qInit[0] = low_state_ros.motor_state[FR_0].q;
+                qInit[1] = low_state_ros.motor_state[FR_1].q;
+                qInit[2] = low_state_ros.motor_state[FR_2].q;
             }
             // second, move to the origin point of a sine movement with Kp Kd
             // if( motiontime >= 500 && motiontime < 1500){
@@ -127,31 +161,38 @@ int main(int argc, char **argv)
             // qDes[2] = sin_mid_q[2];
             }
 
-            low_cmd_ros.motorCmd[FR_0].q = qDes[0];
-            low_cmd_ros.motorCmd[FR_0].dq = 0;
-            low_cmd_ros.motorCmd[FR_0].Kp = Kp[0];
-            low_cmd_ros.motorCmd[FR_0].Kd = Kd[0];
-            low_cmd_ros.motorCmd[FR_0].tau = -1.6f;
+            low_cmd_ros.motor_cmd[FR_0].q = qDes[0];
+            low_cmd_ros.motor_cmd[FR_0].dq = 0;
+            low_cmd_ros.motor_cmd[FR_0].kp = Kp[0];
+            low_cmd_ros.motor_cmd[FR_0].kd = Kd[0];
+            low_cmd_ros.motor_cmd[FR_0].tau = -1.6f;
 
-            low_cmd_ros.motorCmd[FR_1].q = qDes[1];
-            low_cmd_ros.motorCmd[FR_1].dq = 0;
-            low_cmd_ros.motorCmd[FR_1].Kp = Kp[1];
-            low_cmd_ros.motorCmd[FR_1].Kd = Kd[1];
-            low_cmd_ros.motorCmd[FR_1].tau = 0.0f;
+            low_cmd_ros.motor_cmd[FR_1].q = qDes[1];
+            low_cmd_ros.motor_cmd[FR_1].dq = 0;
+            low_cmd_ros.motor_cmd[FR_1].kp = Kp[1];
+            low_cmd_ros.motor_cmd[FR_1].kd = Kd[1];
+            low_cmd_ros.motor_cmd[FR_1].tau = 0.0f;
 
-            low_cmd_ros.motorCmd[FR_2].q = qDes[2];
-            low_cmd_ros.motorCmd[FR_2].dq = 0;
-            low_cmd_ros.motorCmd[FR_2].Kp = Kp[2];
-            low_cmd_ros.motorCmd[FR_2].Kd = Kd[2];
-            low_cmd_ros.motorCmd[FR_2].tau = 0.0f;
+            low_cmd_ros.motor_cmd[FR_2].q = qDes[2];
+            low_cmd_ros.motor_cmd[FR_2].dq = 0;
+            low_cmd_ros.motor_cmd[FR_2].kp = Kp[2];
+            low_cmd_ros.motor_cmd[FR_2].kd = Kd[2];
+            low_cmd_ros.motor_cmd[FR_2].tau = 0.0f;
         }
         
 
+#ifdef USE_ROS1
         pub.publish(low_cmd_ros);
-
         ros::spinOnce();
+#else
+        pub->publish(low_cmd_ros);
+        rclcpp::spin_some(nh);
+#endif
         loop_rate.sleep();
     }
 
+#ifdef USE_ROS2
+    rclcpp::shutdown();
+#endif
     return 0;
 }

@@ -1,0 +1,5 @@
+<launch>
+  <arg name="ctrl_level" default="highlevel"/>
+  <node pkg="unitree_legged_real" exec="ros_udp" name="node_ros_udp"
+        output="screen" args="$(var ctrl_level)"/>
+</launch>

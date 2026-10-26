@@ -1,13 +1,15 @@
+#include <iostream>
+#ifdef USE_ROS1
 #include <ros/ros.h>
-#include <unitree_legged_msgs/HighCmd.h>
-#include <unitree_legged_msgs/HighState.h>
-#include <unitree_legged_msgs/LowCmd.h>
-#include <unitree_legged_msgs/LowState.h>
+#else
+#include <rclcpp/rclcpp.hpp>
+#endif
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
 #include "convert.h"
 #include <chrono>
 #include <pthread.h>
-#include <geometry_msgs/Twist.h>
+#include <boost/bind/bind.hpp>
+#include <strings.h>
 
 using namespace UNITREE_LEGGED_SDK;
 
@@ -70,56 +72,104 @@ public:
 
 Custom custom;
 
+#ifdef USE_ROS1
 ros::Subscriber sub_high;
 ros::Subscriber sub_low;
-
 ros::Publisher pub_high;
 ros::Publisher pub_low;
+#else
+rclcpp::Subscription<unitree_msgs::HighCmd>::SharedPtr sub_high;
+rclcpp::Subscription<unitree_msgs::LowCmd>::SharedPtr sub_low;
+rclcpp::Publisher<unitree_msgs::HighState>::SharedPtr pub_high;
+rclcpp::Publisher<unitree_msgs::LowState>::SharedPtr pub_low;
+#endif
 
 long high_count = 0;
 long low_count = 0;
 
-void highCmdCallback(const unitree_legged_msgs::HighCmd::ConstPtr &msg)
+#ifdef USE_ROS1
+void highCmdCallback(const unitree_msgs::HighCmd::ConstPtr &msg)
+#else
+void highCmdCallback(const unitree_msgs::HighCmd::ConstSharedPtr &msg)
+#endif
 {
     printf("highCmdCallback is running !\t%ld\n", ::high_count++);
 
     custom.high_cmd = rosMsg2Cmd(*msg);
     
-    unitree_legged_msgs::HighState high_state_ros;
+    unitree_msgs::HighState high_state_ros;
 
     high_state_ros = state2rosMsg(custom.high_state);
 
+#ifdef USE_ROS1
     pub_high.publish(high_state_ros);
+#else
+    pub_high->publish(high_state_ros);
+#endif
 
     // printf("highCmdCallback ending !\t%ld\n\n", ::high_count++);
 }
 
-void lowCmdCallback(const unitree_legged_msgs::LowCmd::ConstPtr &msg)
+#ifdef USE_ROS1
+void lowCmdCallback(const unitree_msgs::LowCmd::ConstPtr &msg)
+#else
+void lowCmdCallback(const unitree_msgs::LowCmd::ConstSharedPtr &msg)
+#endif
 {
 
     printf("lowCmdCallback is running !\t%ld\n", ::low_count++);
 
     custom.low_cmd = rosMsg2Cmd(*msg);
 
-    unitree_legged_msgs::LowState low_state_ros;
+    unitree_msgs::LowState low_state_ros;
 
     low_state_ros = state2rosMsg(custom.low_state);
 
+#ifdef USE_ROS1
     pub_low.publish(low_state_ros);
+#else
+    pub_low->publish(low_state_ros);
+#endif
 
     // printf("lowCmdCallback ending!\t%ld\n\n", ::low_count++);
 }
 
 int main(int argc, char **argv)
 {
+#ifdef USE_ROS1
     ros::init(argc, argv, "ros_udp");
+#else
+    rclcpp::init(argc, argv);
+#endif
 
+#ifdef USE_ROS1
     ros::NodeHandle nh;
+#else
+    auto nh = rclcpp::Node::make_shared("ros_udp");
+#endif
 
-    if (strcasecmp(argv[1], "LOWLEVEL") == 0)
+    // Ignore ROS remapping arguments when selecting the positional control level.
+#ifdef USE_ROS1
+    ros::V_string args;
+    ros::removeROSArgs(argc, argv, args);
+#else
+    const auto args = rclcpp::remove_ros_arguments(argc, argv);
+#endif
+    if (args.size() != 2)
     {
+        std::cerr << "Usage: ros_udp HIGHLEVEL|LOWLEVEL" << std::endl;
+        return 1;
+    }
+
+    if (strcasecmp(args[1].c_str(), "LOWLEVEL") == 0)
+    {
+#ifdef USE_ROS1
         sub_low = nh.subscribe("low_cmd", 1, lowCmdCallback);
-        pub_low = nh.advertise<unitree_legged_msgs::LowState>("low_state", 1);
+        pub_low = nh.advertise<unitree_msgs::LowState>("low_state", 1);
+#else
+        sub_low = nh->create_subscription<unitree_msgs::LowCmd>("low_cmd", 1, lowCmdCallback);
+        pub_low = nh->create_publisher<unitree_msgs::LowState>("low_state", 1);
+#endif
 
         LoopFunc loop_udpSend("low_udp_send", 0.002, 3, boost::bind(&Custom::lowUdpSend, &custom));
         LoopFunc loop_udpRecv("low_udp_recv", 0.002, 3, boost::bind(&Custom::lowUdpRecv, &custom));
@@ -129,14 +179,23 @@ int main(int argc, char **argv)
 
         printf("LOWLEVEL is initialized\n");
 
+#ifdef USE_ROS1
         ros::spin();
+#else
+        rclcpp::spin(nh);
+#endif
 
         // printf("low level runing!\n");
     }
-    else if (strcasecmp(argv[1], "HIGHLEVEL") == 0)
+    else if (strcasecmp(args[1].c_str(), "HIGHLEVEL") == 0)
     {
+#ifdef USE_ROS1
         sub_high = nh.subscribe("high_cmd", 1, highCmdCallback);
-        pub_high = nh.advertise<unitree_legged_msgs::HighState>("high_state", 1);
+        pub_high = nh.advertise<unitree_msgs::HighState>("high_state", 1);
+#else
+        sub_high = nh->create_subscription<unitree_msgs::HighCmd>("high_cmd", 1, highCmdCallback);
+        pub_high = nh->create_publisher<unitree_msgs::HighState>("high_state", 1);
+#endif
 
         LoopFunc loop_udpSend("high_udp_send", 0.002, 3, boost::bind(&Custom::highUdpSend, &custom));
         LoopFunc loop_udpRecv("high_udp_recv", 0.002, 3, boost::bind(&Custom::highUdpRecv, &custom));
@@ -146,7 +205,11 @@ int main(int argc, char **argv)
 
         printf("HIGHLEVEL is initialized\n");
 
+#ifdef USE_ROS1
         ros::spin();
+#else
+        rclcpp::spin(nh);
+#endif
 
         // printf("high level runing!\n");
     }
@@ -156,5 +219,8 @@ int main(int argc, char **argv)
         exit(-1);
     }
 
+#ifdef USE_ROS2
+    rclcpp::shutdown();
+#endif
     return 0;
 }

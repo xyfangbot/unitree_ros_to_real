@@ -1,22 +1,13 @@
-uint8 levelFlag
-uint16 commVersion
-uint16 robotID
-uint32 SN
-uint8 bandWidth
+uint8 level_flag
+uint16 comm_version
+uint16 robot_id
+uint32 sn
+uint8 band_width
 IMU imu
-MotorState[20] motorState
-int16[4] footForce	
-int16[4] footForceEst
-uint32 tick	
-uint8[40] wirelessRemote 
+MotorState[20] motor_state
+int16[4] foot_force
+int16[4] foot_force_est
+uint32 tick
+uint8[40] wireless_remote
 uint32 reserve
 uint32 crc
-
-
-	
-					
-
-
-
-
-

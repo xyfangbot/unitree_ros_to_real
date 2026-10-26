@@ -53,3 +53,29 @@ rosrun unitree_legged_real example_position
 
 And before you do the low-level control, please press L2+A to sit the robot down and then press L1+L2+start to make the robot into
 mode in which you can do low-level control, finally make sure you hang the robot up before you run low-level control.
+
+## ROS1 / ROS2 compatibility
+
+Source the desired ROS environment before configuring. As in fastlio2,
+`ROS_VERSION` selects catkin / `USE_ROS1` or ament / `USE_ROS2`.
+All nine message types use a single shared `.msg` definition. Message type names
+(including `IMU` and `LED`) are unchanged; fields now use lowercase snake_case
+in both ROS versions, for example `level_flag`, `motor_cmd`, `motor_state`,
+`yaw_speed`, `kp`, and `kd`. Existing ROS1 consumers must update their field
+accesses. The converters retain the SDK's original member names.
+
+Add SDK v3.8.4 in `unitree_ros_to_real/unitree_legged_sdk` before building.
+Alternatively, set the CMake cache variable `UNITREE_SDK_DIR` to its location.
+The library is selected from `lib/cpp/amd64` or `lib/cpp/arm64`.
+
+For ROS2, build later with colcon and source the resulting install environment.
+Run the bridge with:
+
+```sh
+ros2 launch unitree_legged_real real.launch.xml ctrl_level:=highlevel
+# Or use ctrl_level:=lowlevel
+ros2 run unitree_legged_real example_walk
+# For low-level control, use example_position instead.
+```
+
+The existing ROS1 `real.launch` and `rosrun` commands remain available.
