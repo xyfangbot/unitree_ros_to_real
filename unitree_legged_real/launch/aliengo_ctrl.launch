@@ -1,0 +1,9 @@
+<launch>
+  <arg name="cmd_topic" default="/cmd_planner"/>
+  <arg name="target_ip" default="192.168.123.220"/>
+  <node pkg="unitree_legged_real" type="aliengo_ctrl_node" name="aliengo_ctrl_node"
+        output="screen" required="true">
+    <param name="cmd_topic" value="$(arg cmd_topic)"/>
+    <param name="target_ip" value="$(arg target_ip)"/>
+  </node>
+</launch>

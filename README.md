@@ -79,3 +79,70 @@ ros2 run unitree_legged_real example_walk
 ```
 
 The existing ROS1 `real.launch` and `rosrun` commands remain available.
+
+## AlienGo planner controller
+
+`aliengo_ctrl_node` directly owns the SDK high-level UDP connection. Run it
+instead of `ros_udp` or the SDK control examples (the default local port is 8081).
+It subscribes to `geometry_msgs/TwistStamped` on `/cmd_planner`; `linear.x` is
+forward speed in m/s and `angular.z` is yaw rate in rad/s, both in the robot body
+frame. Other twist components are ignored. The publisher must stamp messages
+with the same ROS clock as the controller; `frame_id` does not perform a transform.
+
+```sh
+# ROS1
+roslaunch unitree_legged_real aliengo_ctrl.launch
+# ROS2
+ros2 launch unitree_legged_real aliengo_ctrl.launch.xml
+```
+
+Parameters: `cmd_topic` (default `/cmd_planner`), `target_ip`
+(`192.168.123.220`), `local_port` (8081), and `target_port` (8082).
+The launch files expose `cmd_topic` and `target_ip`; ports can be set as node
+parameters when running the executable directly.
+
+At startup the node sends the sport trigger from
+`example_start_aliengo_sport.cpp` (`levelFlag=0xf0` for 90 ms), restores
+`HIGHLEVEL`, waits 2 seconds, then commands modes 7 (0.5 s), 5 (1.8 s),
+6 (3.5 s), and 1 (1.5 s), before entering velocity mode 2.
+Velocities remain zero throughout startup; a fresh planner message must arrive
+after startup completes before movement is allowed.
+
+The transition order follows Unitree's
+[AlienGo mode guide](https://github.com/UnitreeSupport/Unitree_Docs/blob/master/docs/Aliengo/AlienGo.md)
+for motion programs 1.0.17 and later: stand `7 -> 5 -> 6`, enable walking
+`6 -> 1 -> 2`, crouch `2 -> 1 -> 6 -> 5 -> 7`. This corrects the differing
+mode order/comments in `example_end_aliengo_sport.cpp`. Dwell times are based on
+the local SDK example and are estimates; the node does not confirm posture
+completion from feedback. Validate them against the installed motion program.
+
+Commands are sent at 500 Hz. A message older than 100 ms, a gap of more than
+100 ms since receipt of a new valid message, a future/zero/replayed timestamp,
+or non-finite velocity clears the velocity command. Both ROS timestamp age
+and steady elapsed time are checked on each send. Timeout keeps mode 2 with
+zero velocity; it does not start the sit sequence. ROS2 uses volatile,
+best-effort QoS with depth 1 (compatible with reliable or best-effort publishers).
+
+On SIGINT/SIGTERM or ROS shutdown, the node sends zero velocity in mode 2
+for 0.2 s, then modes 1 (1.5 s), 6 (1 s), 5 (2 s), and 7 (1 s), before
+closing UDP. Startup interruption skips unnecessary stand-up stages. Allow at
+least 6 seconds for graceful exit. SIGKILL, process crashes, network loss, or
+power loss cannot guarantee that the robot receives this sequence.
+
+### Keyboard planner commands
+
+Run in an interactive terminal after sourcing ROS (no SDK build is needed to
+run the script directly):
+
+```sh
+python3 src/unitree_ros_to_real/unitree_legged_real/scripts/aliengo_keyboard.py
+```
+
+After installing the package, use `rosrun unitree_legged_real aliengo_keyboard.py`
+or `ros2 run unitree_legged_real aliengo_keyboard.py`.
+W/S increment/decrement forward speed by 0.05 m/s. A/D increment/decrement
+yaw rate by 0.05 rad/s (positive turns left). Commands start at `(0, 0)` and
+persist while the script publishes fresh TwistStamped messages at 50 Hz.
+Space resets both values; Q or Ctrl-C sends zero and exits. Key auto-repeat
+also increments the command. These are yaw turns, rather than lateral motion,
+to match `aliengo_ctrl_node`'s `linear.x` / `angular.z` interface.

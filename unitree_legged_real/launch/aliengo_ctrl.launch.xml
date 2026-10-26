@@ -1,0 +1,11 @@
+<launch>
+  <let name="sigterm_timeout" value="8.0"/>
+  <let name="sigkill_timeout" value="8.0"/>
+  <arg name="cmd_topic" default="/cmd_planner"/>
+  <arg name="target_ip" default="192.168.123.220"/>
+  <node pkg="unitree_legged_real" exec="aliengo_ctrl_node" name="aliengo_ctrl_node"
+        output="screen">
+    <param name="cmd_topic" value="$(var cmd_topic)"/>
+    <param name="target_ip" value="$(var target_ip)"/>
+  </node>
+</launch>
