@@ -65,6 +65,7 @@ int main(int argc, char **argv)
     double command_stamp = 0.0;
     double last_accepted_stamp = 0.0;
     double forward_velocity = 0.0;
+    double lateral_velocity = 0.0;
     double yaw_velocity = 0.0;
     Clock::time_point last_received;
 
@@ -87,19 +88,22 @@ int main(int argc, char **argv)
 #endif
         const double age = now - stamp;
         const double vx = msg->twist.linear.x;
+        const double vy = msg->twist.linear.y;
         const double wz = msg->twist.angular.z;
         // Replayed stamps do not refresh the steady-clock watchdog. Invalid input
         // cancels the previous velocity rather than retaining it until timeout.
         valid_command = false;
         if (stamp <= 0.0 || stamp <= last_accepted_stamp || age < 0.0 || age > timeout ||
-            !std::isfinite(vx) || !std::isfinite(wz) ||
+            !std::isfinite(vx) || !std::isfinite(vy) || !std::isfinite(wz) ||
             std::abs(vx) > std::numeric_limits<float>::max() ||
+            std::abs(vy) > std::numeric_limits<float>::max() ||
             std::abs(wz) > std::numeric_limits<float>::max())
             return;
         command_stamp = stamp;
         last_accepted_stamp = stamp;
         last_received = Clock::now();
         forward_velocity = vx;
+        lateral_velocity = vy;
         yaw_velocity = wz;
         valid_command = true;
     };
@@ -253,6 +257,7 @@ int main(int argc, char **argv)
             if (valid_command && !exit_requested)
             {
                 cmd.velocity[0] = static_cast<float>(forward_velocity);
+                cmd.velocity[1] = static_cast<float>(lateral_velocity);
                 cmd.yawSpeed = static_cast<float>(yaw_velocity);
             }
         }
